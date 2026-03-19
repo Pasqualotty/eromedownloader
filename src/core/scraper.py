@@ -299,18 +299,17 @@ class EromeScraper:
 
         filtered = []
         for item in items:
-            if item.media_type != MediaType.VIDEO:
-                filtered.append(item)
-                continue
+            if item.media_type == MediaType.VIDEO:
+                check_url = item.poster_url
+            else:
+                check_url = item.url
 
-            if not item.poster_url:
-                filtered.append(item)
+            if not check_url:
                 continue
 
             self.on_status(f"  Verificando rosto: {item.filename}...")
-            img_data = await self._fetch_image_bytes(item.poster_url)
+            img_data = await self._fetch_image_bytes(check_url)
             if img_data is None:
-                filtered.append(item)
                 continue
 
             has_face = detect_face_in_image_bytes(img_data)

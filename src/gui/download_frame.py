@@ -113,7 +113,7 @@ class DownloadFrame(ctk.CTkFrame):
 
         self.face_var = ctk.BooleanVar(value=False)
         ctk.CTkCheckBox(
-            filter_frame, text="So videos com rosto na thumb",
+            filter_frame, text="So midias com rosto",
             variable=self.face_var,
         ).pack(side="left")
 
