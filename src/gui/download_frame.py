@@ -15,35 +15,53 @@ from src.gui.settings_frame import get_download_dir, get_workers, get_last_dir, 
 from src.utils.config import DEFAULT_WORKERS
 
 
-def _make_search_label(raw_input: str) -> str:
-    raw = raw_input.strip()
+MODES = {
+    "Album": {
+        "placeholder": "URL do album (ex: erome.com/a/ABC123)",
+        "suffix": "album",
+    },
+    "Perfil Completo": {
+        "placeholder": "Username ou URL (ex: erome.com/Username)",
+        "suffix": "perfil",
+    },
+    "Busca / Palavra": {
+        "placeholder": "Termo de busca (ex: linda, cute girls)",
+        "suffix": "pesquisadireta",
+    },
+    "Hashtag": {
+        "placeholder": "Hashtag sem # (ex: brazilian, gostosa)",
+        "suffix": "hashtag",
+    },
+}
+
+MODE_LIST = list(MODES.keys())
+
+
+def _make_search_label(raw_input: str, mode: str) -> str:
+    raw = raw_input.strip().lstrip("#")
     if not raw:
         return ""
+    suffix = MODES.get(mode, {}).get("suffix", "outro")
 
     if "erome.com/a/" in raw:
         album_id = raw.rstrip("/").split("/a/")[-1].split("?")[0]
-        return f"album_{_safe(album_id)}"
+        return f"{_safe(album_id)}_{suffix}"
 
     if "erome.com/search" in raw:
         import urllib.parse
         parsed = urllib.parse.urlparse(raw)
-        q = urllib.parse.parse_qs(parsed.query).get("q", [""])[0]
-        if q.startswith("#"):
-            return f"{_safe(q[1:])}_hashtag"
-        return f"{_safe(q)}_pesquisadireta"
+        q = urllib.parse.parse_qs(parsed.query).get("q", [""])[0].lstrip("#")
+        return f"{_safe(q)}_{suffix}"
 
     if "erome.com/" in raw:
         username = raw.rstrip("/").split("/")[-1].split("?")[0]
-        return f"perfil_{_safe(username)}"
+        return f"{_safe(username)}_{suffix}"
 
-    if raw.startswith("#") and len(raw) > 1:
-        return f"{_safe(raw[1:])}_hashtag"
-
-    return f"{_safe(raw)}_pesquisadireta"
+    return f"{_safe(raw)}_{suffix}"
 
 
 def _safe(name: str) -> str:
-    name = re.sub(r'[<>:"/\\|?*%]', '_', name)
+    name = re.sub(r'[<>:"/\\|?*%#]', '_', name)
     name = name.strip('. ')
     if len(name) > 80:
         name = name[:80]
@@ -71,27 +89,37 @@ class DownloadFrame(ctk.CTkFrame):
         # --- Input ---
         input_frame = ctk.CTkFrame(self, fg_color="transparent")
         input_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
-        input_frame.grid_columnconfigure(1, weight=1)
+        input_frame.grid_columnconfigure(2, weight=1)
 
-        ctk.CTkLabel(input_frame, text="URL:").grid(row=0, column=0, padx=(0, 8), pady=5)
+        ctk.CTkLabel(input_frame, text="Modo:").grid(row=0, column=0, padx=(0, 8), pady=5)
+        self.mode_var = ctk.StringVar(value=MODE_LIST[0])
+        self.mode_menu = ctk.CTkOptionMenu(
+            input_frame,
+            values=MODE_LIST,
+            variable=self.mode_var,
+            width=160,
+            command=self._on_mode_change,
+        )
+        self.mode_menu.grid(row=0, column=1, padx=(0, 8), pady=5)
+
         self.url_var = ctk.StringVar()
-        url_entry = ctk.CTkEntry(
+        self.url_entry = ctk.CTkEntry(
             input_frame,
             textvariable=self.url_var,
-            placeholder_text="URL, termo de busca, ou #hashtag",
+            placeholder_text=MODES[MODE_LIST[0]]["placeholder"],
         )
-        url_entry.grid(row=0, column=1, sticky="ew", pady=5)
+        self.url_entry.grid(row=0, column=2, sticky="ew", pady=5)
 
         ctk.CTkLabel(input_frame, text="Pasta:").grid(row=1, column=0, padx=(0, 8), pady=5)
         initial_dir = get_last_dir() or get_download_dir()
         self.dir_var = ctk.StringVar(value=initial_dir)
         dir_entry = ctk.CTkEntry(input_frame, textvariable=self.dir_var)
-        dir_entry.grid(row=1, column=1, sticky="ew", pady=5)
+        dir_entry.grid(row=1, column=1, columnspan=2, sticky="ew", pady=5)
         ctk.CTkButton(input_frame, text="...", width=40, command=self._browse_dir).grid(
-            row=1, column=2, padx=(5, 0), pady=5
+            row=1, column=3, padx=(5, 0), pady=5
         )
 
-        # --- Options row 1: tipo + workers + limite ---
+        # --- Options row 1 ---
         options_frame = ctk.CTkFrame(self, fg_color="transparent")
         options_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(5, 2))
 
@@ -125,7 +153,7 @@ class DownloadFrame(ctk.CTkFrame):
             side="left"
         )
 
-        # --- Options row 2: filtro de duracao + rosto ---
+        # --- Options row 2: filtro ---
         filter_frame = ctk.CTkFrame(self, fg_color="transparent")
         filter_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=(2, 5))
 
@@ -175,23 +203,20 @@ class DownloadFrame(ctk.CTkFrame):
         )
         self.stop_btn.pack(side="left")
 
-        # --- Scraping progress (search loading) ---
+        # --- Scraping progress ---
         self.scrape_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.scrape_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=(5, 0))
         self.scrape_frame.grid_columnconfigure(1, weight=1)
 
         self.scrape_status_label = ctk.CTkLabel(
-            self.scrape_frame,
-            text="",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color="#3B8ED0",
+            self.scrape_frame, text="",
+            font=ctk.CTkFont(size=12, weight="bold"), text_color="#3B8ED0",
         )
         self.scrape_status_label.grid(row=0, column=0, padx=(0, 10), sticky="w")
 
         self.scrape_bar = ctk.CTkProgressBar(self.scrape_frame, height=8)
         self.scrape_bar.grid(row=0, column=1, sticky="ew")
         self.scrape_bar.set(0)
-
         self.scrape_frame.grid_remove()
 
         # --- Download progress ---
@@ -215,13 +240,14 @@ class DownloadFrame(ctk.CTkFrame):
 
         # --- Footer ---
         self.footer_label = ctk.CTkLabel(
-            self,
-            text="Pronto",
-            font=ctk.CTkFont(size=11),
-            text_color="gray60",
-            anchor="w",
+            self, text="Pronto", font=ctk.CTkFont(size=11),
+            text_color="gray60", anchor="w",
         )
         self.footer_label.grid(row=7, column=0, sticky="ew", padx=10, pady=(0, 10))
+
+    def _on_mode_change(self, mode: str):
+        info = MODES.get(mode, {})
+        self.url_entry.configure(placeholder_text=info.get("placeholder", ""))
 
     def _browse_dir(self):
         path = filedialog.askdirectory(initialdir=self.dir_var.get())
@@ -326,7 +352,7 @@ class DownloadFrame(ctk.CTkFrame):
 
     # --- Input parsing ---
 
-    def _parse_input(self, raw: str) -> str:
+    def _parse_input(self, raw: str, mode: str) -> str:
         raw = raw.strip()
         if not raw:
             return ""
@@ -334,21 +360,35 @@ class DownloadFrame(ctk.CTkFrame):
         if "erome.com" in raw:
             return raw
 
-        if raw.startswith("#") and len(raw) > 1:
-            tag = raw[1:]
+        if mode == "Album":
+            if raw.startswith("http"):
+                return raw
+            return f"https://www.erome.com/a/{raw}"
+
+        if mode == "Perfil Completo":
+            if raw.startswith("http"):
+                return raw
+            raw = raw.lstrip("@")
+            return f"https://www.erome.com/{raw}"
+
+        if mode == "Hashtag":
+            tag = raw.lstrip("#")
             return f"https://www.erome.com/search?q=%23{tag}"
 
+        # Busca / Palavra
         return f"https://www.erome.com/search?q={raw}"
 
     # --- Actions ---
 
     def _start_download(self):
         raw = self.url_var.get().strip()
+        mode = self.mode_var.get()
+
         if not raw:
-            self._log("Insira uma URL, termo de busca, ou #hashtag.")
+            self._log("Insira o que deseja baixar.")
             return
 
-        url = self._parse_input(raw)
+        url = self._parse_input(raw, mode)
         if not url:
             self._log("Entrada invalida.")
             return
@@ -368,7 +408,7 @@ class DownloadFrame(ctk.CTkFrame):
         dur_min = self._parse_int(self.dur_min_min_var.get()) * 60 + self._parse_int(self.dur_min_sec_var.get())
         dur_max = self._parse_int(self.dur_max_min_var.get()) * 60 + self._parse_int(self.dur_max_sec_var.get())
 
-        search_label = _make_search_label(raw)
+        search_label = _make_search_label(raw, mode)
 
         download_dir = self.dir_var.get()
         save_last_dir(download_dir)
@@ -387,9 +427,8 @@ class DownloadFrame(ctk.CTkFrame):
             search_label=search_label,
         )
 
-        self._log(f"Salvando em: {download_dir}/{search_label}")
-
         self.log_text.delete("1.0", "end")
+        self._log(f"Modo: {mode} | Salvando em: {download_dir}/{search_label}")
         self.progress_bar.set(0)
         self.progress_label.configure(text="0%")
         self.scrape_bar.set(0)
@@ -461,7 +500,9 @@ class DownloadFrame(ctk.CTkFrame):
         self._running = running
         if running:
             self.start_btn.configure(state="disabled")
-            self.stop_btn.configure(state="normal")
+            self.stop_btn.configure(state="disabled")
+            self.mode_menu.configure(state="disabled")
         else:
             self.start_btn.configure(state="normal")
             self.stop_btn.configure(state="disabled")
+            self.mode_menu.configure(state="normal")
