@@ -1,5 +1,6 @@
 import asyncio
 import queue
+import re
 import threading
 import time
 import customtkinter as ctk
@@ -10,8 +11,43 @@ from src.core.models import (
 )
 from src.core.scraper import EromeScraper
 from src.core.downloader import DownloadManager
-from src.gui.settings_frame import get_download_dir, get_workers
+from src.gui.settings_frame import get_download_dir, get_workers, get_last_dir, save_last_dir
 from src.utils.config import DEFAULT_WORKERS
+
+
+def _make_search_label(raw_input: str) -> str:
+    raw = raw_input.strip()
+    if not raw:
+        return ""
+
+    if "erome.com/a/" in raw:
+        album_id = raw.rstrip("/").split("/a/")[-1].split("?")[0]
+        return f"album_{_safe(album_id)}"
+
+    if "erome.com/search" in raw:
+        import urllib.parse
+        parsed = urllib.parse.urlparse(raw)
+        q = urllib.parse.parse_qs(parsed.query).get("q", [""])[0]
+        if q.startswith("#"):
+            return f"{_safe(q[1:])}_hashtag"
+        return f"{_safe(q)}_pesquisadireta"
+
+    if "erome.com/" in raw:
+        username = raw.rstrip("/").split("/")[-1].split("?")[0]
+        return f"perfil_{_safe(username)}"
+
+    if raw.startswith("#") and len(raw) > 1:
+        return f"{_safe(raw[1:])}_hashtag"
+
+    return f"{_safe(raw)}_pesquisadireta"
+
+
+def _safe(name: str) -> str:
+    name = re.sub(r'[<>:"/\\|?*%]', '_', name)
+    name = name.strip('. ')
+    if len(name) > 80:
+        name = name[:80]
+    return name or "sem_nome"
 
 
 class DownloadFrame(ctk.CTkFrame):
@@ -24,7 +60,7 @@ class DownloadFrame(ctk.CTkFrame):
         self._cancel_event: asyncio.Event | None = None
         self._running = False
         self._start_time = 0.0
-        self._phase = "idle"  # idle, scraping, downloading
+        self._phase = "idle"
 
         self._build_ui()
         self._poll_queue()
@@ -47,7 +83,8 @@ class DownloadFrame(ctk.CTkFrame):
         url_entry.grid(row=0, column=1, sticky="ew", pady=5)
 
         ctk.CTkLabel(input_frame, text="Pasta:").grid(row=1, column=0, padx=(0, 8), pady=5)
-        self.dir_var = ctk.StringVar(value=get_download_dir())
+        initial_dir = get_last_dir() or get_download_dir()
+        self.dir_var = ctk.StringVar(value=initial_dir)
         dir_entry = ctk.CTkEntry(input_frame, textvariable=self.dir_var)
         dir_entry.grid(row=1, column=1, sticky="ew", pady=5)
         ctk.CTkButton(input_frame, text="...", width=40, command=self._browse_dir).grid(
@@ -68,7 +105,12 @@ class DownloadFrame(ctk.CTkFrame):
             side="left", padx=(0, 15)
         )
 
-        ctk.CTkLabel(options_frame, text="Workers:").pack(side="left", padx=(20, 5))
+        self.flat_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            options_frame, text="Pasta unica", variable=self.flat_var,
+        ).pack(side="left", padx=(0, 15))
+
+        ctk.CTkLabel(options_frame, text="Workers:").pack(side="left", padx=(10, 5))
         self.workers_var = ctk.StringVar(value=str(get_workers()))
         ctk.CTkEntry(options_frame, textvariable=self.workers_var, width=50).pack(
             side="left", padx=(0, 15)
@@ -313,7 +355,7 @@ class DownloadFrame(ctk.CTkFrame):
 
         try:
             workers = int(self.workers_var.get())
-            workers = max(1, min(20, workers))
+            workers = max(1, min(30, workers))
         except ValueError:
             workers = DEFAULT_WORKERS
 
@@ -326,9 +368,14 @@ class DownloadFrame(ctk.CTkFrame):
         dur_min = self._parse_int(self.dur_min_min_var.get()) * 60 + self._parse_int(self.dur_min_sec_var.get())
         dur_max = self._parse_int(self.dur_max_min_var.get()) * 60 + self._parse_int(self.dur_max_sec_var.get())
 
+        search_label = _make_search_label(raw)
+
+        download_dir = self.dir_var.get()
+        save_last_dir(download_dir)
+
         options = DownloadOptions(
             url=url,
-            download_dir=self.dir_var.get(),
+            download_dir=download_dir,
             download_photos=self.photos_var.get(),
             download_videos=self.videos_var.get(),
             workers=workers,
@@ -336,7 +383,11 @@ class DownloadFrame(ctk.CTkFrame):
             video_min_seconds=dur_min,
             video_max_seconds=dur_max,
             face_filter=self.face_var.get(),
+            flat_folder=self.flat_var.get(),
+            search_label=search_label,
         )
+
+        self._log(f"Salvando em: {download_dir}/{search_label}")
 
         self.log_text.delete("1.0", "end")
         self.progress_bar.set(0)

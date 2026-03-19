@@ -140,6 +140,13 @@ class DownloadManager:
 
     def _get_dest_dir(self, item: MediaItem) -> str:
         base = self.options.download_dir
+
+        if self.options.search_label:
+            base = os.path.join(base, self.options.search_label)
+
+        if self.options.flat_folder:
+            return base
+
         username = item.username or "desconhecido"
         album = item.album_title or item.album_id
 

@@ -33,6 +33,17 @@ def get_workers() -> int:
     return settings.get("workers", DEFAULT_WORKERS)
 
 
+def get_last_dir() -> str:
+    settings = load_settings()
+    return settings.get("last_dir", "")
+
+
+def save_last_dir(path: str):
+    settings = load_settings()
+    settings["last_dir"] = path
+    save_settings(settings)
+
+
 class SettingsFrame(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)

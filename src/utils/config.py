@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 APP_NAME = "EromeDownloader"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 
 DATA_DIR = Path.home() / ".eromedl"
 SETTINGS_FILE = DATA_DIR / "settings.json"

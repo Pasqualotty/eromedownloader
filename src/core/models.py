@@ -56,3 +56,5 @@ class DownloadOptions:
     video_min_seconds: int = 0
     video_max_seconds: int = 0
     face_filter: bool = False
+    flat_folder: bool = False
+    search_label: str = ""
