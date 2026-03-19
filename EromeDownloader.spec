@@ -9,7 +9,12 @@ cv2_data_path = os.path.join(os.path.dirname(cv2.__file__), 'data')
 a = Analysis(
     ['src/main.py'],
     pathex=['.'],
-    binaries=[],
+    binaries=[
+        ('C:/Windows/System32/vcruntime140.dll', '.'),
+        ('C:/Windows/System32/vcruntime140_1.dll', '.'),
+        ('C:/Windows/System32/msvcp140.dll', '.'),
+        ('C:/Windows/System32/msvcp140_1.dll', '.'),
+    ],
     datas=[
         (ctk_path, 'customtkinter'),
         (cv2_data_path, 'cv2/data'),
